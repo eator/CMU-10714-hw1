@@ -5,12 +5,13 @@ import gzip
 import numpy as np
 
 import sys
+import time
 
 sys.path.append("python/")
 import needle as ndl
 
 
-def parse_mnist(image_filesname, label_filename):
+def parse_mnist(image_filename, label_filename):
     """Read an images and labels file in MNIST format.  See this page:
     http://yann.lecun.com/exdb/mnist/ for a description of the file format.
 
@@ -33,9 +34,61 @@ def parse_mnist(image_filesname, label_filename):
                 for MNIST will contain the values 0-9.
     """
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    # read image file
+    with gzip.open(image_filename, 'rb') as fi:
+        image_content = fi.read()
+
+    image_magic = struct.unpack('>I', image_content[:4])[0]
+    if image_magic != 2051 :
+        print("read file format error!")
+
+    image_num = struct.unpack('>I', image_content[4:8])[0]
+    image_row = struct.unpack('>I', image_content[8:12])[0]
+    image_col = struct.unpack('>I', image_content[12:16])[0]
+
+    ### vectorizaton form, very quick
+    # Reshape image_content into a 3D array (image_num, image_row, image_col)
+    image_content_reshaped = np.frombuffer(image_content, dtype=np.uint8, offset=16).reshape(image_num, image_row, image_col)
+    # Convert uint8 values to float32 and normalize
+    X = image_content_reshaped.astype(np.float32) / 255.0
+    # Reshape X into a 2D array (image_num, image_row * image_col)
+    X = X.reshape(image_num, -1)
+
+    # --------------------------------------------------------------------------------------#
+
+    # read label file
+    with gzip.open(label_filename, 'rb') as fl:
+        label_content = fl.read()
+
+    label_magic = struct.unpack('>I', label_content[:4])[0]
+    if label_magic != 2049 :
+        print("read file format error!")
+
+    label_num = struct.unpack('>I', label_content[4:8])[0]
+    y = np.zeros(label_num, dtype=np.uint8)
+
+    # get y from label_content
+    for i in range (label_num):
+        label = label_content[8 + i]
+        y[i] = np.uint8(label)
+    
+    # --------------------------------------------------------------------------------------#
+
+    return (X, y)
     ### END YOUR SOLUTION
 
+# definde by mingxi
+def softmax(tensor):
+    tensor_exp = ndl.exp(tensor)
+    tensor_exp_sum = ndl.summation(tensor_exp, (1,))
+    tensor_exp_sum_expand = ndl.broadcast_to(ndl.reshape(tensor_exp_sum, (tensor.shape[0], 1)), tensor.shape)
+
+    return  tensor_exp / tensor_exp_sum_expand 
+
+# defined by mingxi
+def relu_mask(tensor):
+    condition = tensor.cached_data > 0
+    return ndl.Tensor(condition.astype(int))
 
 def softmax_loss(Z, y_one_hot):
     """Return softmax loss.  Note that for the purposes of this assignment,
@@ -54,7 +107,11 @@ def softmax_loss(Z, y_one_hot):
         Average softmax loss over the sample. (ndl.Tensor[np.float32])
     """
     ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    Z_exp = ndl.exp(Z)
+    Z_exp_sum_log_sum = ndl.summation(ndl.log(ndl.summation(Z_exp, (1,))))
+    Z_y_sum = ndl.summation(Z * y_one_hot)
+
+    return  (Z_exp_sum_log_sum - Z_y_sum) / Z.shape[0]
     ### END YOUR SOLUTION
 
 
@@ -82,8 +139,31 @@ def nn_epoch(X, y, W1, W2, lr=0.1, batch=100):
             W2: ndl.Tensor[np.float32]
     """
 
-    ### BEGIN YOUR SOLUTION
-    raise NotImplementedError()
+    ### BEGIN YOUR SOLUTION    
+    m = X.shape[0]
+    n = X.shape[1]
+    k = W2.shape[1]
+
+    iter_num = int(m / batch)
+
+    I_y = np.zeros((m, k), dtype=np.uint8)
+    I_y[np.arange(m), y] = 1
+
+    for i in range(iter_num):
+        X_batch = ndl.Tensor(X[i*batch:(i+1)*batch, :])
+        Iy_batch = ndl.Tensor(I_y[i*batch:(i+1)*batch, :]) 
+
+        Z = ndl.matmul(ndl.relu(ndl.matmul(X_batch, W1)), W2)
+        loss_ce = softmax_loss(Z, Iy_batch)
+        loss_ce.backward()
+        
+        
+        W1 = ndl.Tensor(W1.numpy() - W1.grad.numpy() * lr) 
+        W2 = ndl.Tensor(W2.numpy() - W2.grad.numpy() * lr) 
+        #W1.data = W1.data + W1.grad * (-lr) 
+        #W2.data = W2.data + W2.grad * (-lr) 
+
+    return W1, W2
     ### END YOUR SOLUTION
 
 
