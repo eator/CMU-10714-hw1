@@ -87,7 +87,8 @@ class PowerScalar(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        return out_grad * mul_scalar(power_scalar(node, self.scalar-1), self.scalar)
+        lhs = node.inputs[0]
+        return out_grad * self.scalar * power_scalar(lhs, self.scalar-1)
         ### END YOUR SOLUTION
 
 
@@ -127,8 +128,8 @@ class EWiseDiv(TensorOp):
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
         lhs, rhs = node.inputs
-        rhs_2 = power_scalar(rhs, 2)
-        return divide(out_grad, rhs), negate(divide(multiply(out_grad, lhs), rhs_2))
+        rhs_2 = rhs * rhs 
+        return out_grad / rhs, negate((out_grad * lhs) / rhs_2)
         ### END YOUR SOLUTION
 
 
@@ -147,7 +148,7 @@ class DivScalar(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        return divide_scalar(out_grad, self.scalar) 
+        return out_grad / self.scalar 
         ### END YOUR SOLUTION
 
 
@@ -199,7 +200,7 @@ class Reshape(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        input_shape = node.inputs[0].cached_data.shape
+        input_shape = node.inputs[0].shape
         return reshape(out_grad, input_shape)
         ### END YOUR SOLUTION
 
@@ -221,7 +222,7 @@ class BroadcastTo(TensorOp):
         ### BEGIN YOUR SOLUTION
         in_shape = node.inputs[0].shape
         out_shape = out_grad.shape
-        ex_dim = out_grad.cached_data.ndim - node.inputs[0].cached_data.ndim  
+        ex_dim = len(out_shape) - len(in_shape)
         ex_axes = ()
         if ex_dim > 0:
             ex_axes += tuple(range(ex_dim))
@@ -280,16 +281,13 @@ class MatMul(TensorOp):
         while tensor.cached_data.ndim < len(org_shape):
             tensor.cached_data = array_api.expand_dims(tensor, axis=0)    
 
-        #print("^^^^^^^^^^")
-        #print(tensor.shape)
         return tensor
-
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
         lhs, rhs = node.inputs
-        grad_a = matmul(out_grad, transpose(rhs))
-        grad_b = matmul(transpose(lhs), out_grad)
+        grad_a = out_grad @ transpose(rhs)
+        grad_b = transpose(lhs) @ out_grad
 
         return self.match_dim(grad_a, lhs.shape), self.match_dim(grad_b, rhs.shape),  
         ### END YOUR SOLUTION
@@ -323,7 +321,7 @@ class Log(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        return divide(out_grad, node.inputs[0])
+        return out_grad / node.inputs[0]
         ### END YOUR SOLUTION
 
 
@@ -339,7 +337,7 @@ class Exp(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        return multiply(out_grad, exp(node.inputs[0]))
+        return out_grad * exp(node.inputs[0])
         ### END YOUR SOLUTION
 
 
@@ -355,10 +353,10 @@ class ReLU(TensorOp):
 
     def gradient(self, out_grad, node):
         ### BEGIN YOUR SOLUTION
-        condition = node.inputs[0].cached_data > 0
-        partial = condition.astype(int)
+        array = node.inputs[0].cached_data > 0
+        partial = array.astype(int)
         
-        return multiply(out_grad, Tensor(partial))
+        return out_grad * Tensor(partial)
         ### END YOUR SOLUTION
 
 
